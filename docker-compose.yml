@@ -1,0 +1,14 @@
+services:
+  telegram-alert:
+    build: .
+    container_name: telegram-alert-signal
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; r = httpx.get('http://localhost:8000/health'); exit(0 if r.status_code == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
