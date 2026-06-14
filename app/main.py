@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request, Response, status
 
 from .config import Config
 from .formatter import format_alert
-from .telegram import send_to_chats
+from .telegram import send_to_targets
 
 # ── Load config ──────────────────────────────────────────────────────────────────
 config = Config.from_env()
@@ -25,7 +25,7 @@ logger = logging.getLogger("alert-signal")
 async def lifespan(app: FastAPI):
     logger.info("🚀 TradingView → Telegram Alert Service started")
     logger.info(f"   Symbols configured: {list(config.symbol_chat_map.keys()) or ['(using defaults)']}")
-    logger.info(f"   Default chat IDs:   {config.default_chat_ids or ['(none)']}")
+    logger.info(f"   Default targets:    {config.default_targets or ['(none)']}")
     logger.info(f"   Webhook secret:     {'✅ set' if config.webhook_secret else '⚠️  not set'}")
     yield
     logger.info("👋 Alert service stopped")
@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
 # ── FastAPI app ──────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="TradingView Telegram Alert",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
@@ -84,11 +84,11 @@ async def webhook(request: Request):
     symbol = data.get("symbol", "unknown")
     logger.info(f"📩 Received: action={action} symbol={symbol}")
 
-    # ── Get target chat IDs ──────────────────────────────────────────────────
-    chat_ids = config.get_chat_ids(symbol)
-    if not chat_ids:
-        logger.warning(f"No chat IDs for symbol '{symbol}', skipping")
-        return {"status": "skipped", "reason": "no_chat_ids"}
+    # ── Get target chats ─────────────────────────────────────────────────────
+    targets = config.get_targets(symbol)
+    if not targets:
+        logger.warning(f"No chat targets for symbol '{symbol}', skipping")
+        return {"status": "skipped", "reason": "no_chat_targets"}
 
     # ── Format message ───────────────────────────────────────────────────────
     message = format_alert(data)
@@ -101,12 +101,12 @@ async def webhook(request: Request):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
-    results = await send_to_chats(config.bot_token, chat_ids, message)
+    results = await send_to_targets(config.bot_token, targets, message)
 
     sent = sum(1 for ok in results.values() if ok)
     failed = sum(1 for ok in results.values() if not ok)
 
-    logger.info(f"✅ Sent to {sent}/{len(chat_ids)} chats (failed: {failed})")
+    logger.info(f"✅ Sent to {sent}/{len(targets)} targets (failed: {failed})")
 
     return {
         "status": "ok",

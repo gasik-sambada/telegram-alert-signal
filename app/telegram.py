@@ -1,13 +1,27 @@
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING, Optional
+
 import httpx
+
+if TYPE_CHECKING:
+    from .config import ChatTarget
 
 logger = logging.getLogger(__name__)
 
 TELEGRAM_API = "https://api.telegram.org"
 
 
-async def send_message(bot_token: str, chat_id: str, text: str) -> bool:
-    """Send a message to a Telegram chat. Returns True on success."""
+async def send_message(
+    bot_token: str,
+    chat_id: str,
+    text: str,
+    topic_id: Optional[int] = None,
+) -> bool:
+    """Send a message to a Telegram chat (optionally to a specific topic/thread).
+    Returns True on success.
+    """
     url = f"{TELEGRAM_API}/bot{bot_token}/sendMessage"
     payload = {
         "chat_id": chat_id,
@@ -16,12 +30,17 @@ async def send_message(bot_token: str, chat_id: str, text: str) -> bool:
         "disable_web_page_preview": True,
     }
 
+    # Add topic (forum thread) if specified
+    if topic_id is not None:
+        payload["message_thread_id"] = topic_id
+
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(url, json=payload)
 
         if resp.status_code == 200:
-            logger.info(f"Message sent to chat {chat_id}")
+            dest = f"{chat_id}#{topic_id}" if topic_id else chat_id
+            logger.info(f"Message sent to {dest}")
             return True
         else:
             logger.error(
@@ -38,10 +57,15 @@ async def send_message(bot_token: str, chat_id: str, text: str) -> bool:
         return False
 
 
-async def send_to_chats(bot_token: str, chat_ids: list[str], text: str) -> dict:
-    """Send a message to multiple chats. Returns results per chat_id."""
+async def send_to_targets(
+    bot_token: str,
+    targets: list["ChatTarget"],
+    text: str,
+) -> dict[str, bool]:
+    """Send a message to multiple ChatTargets. Returns results per target."""
     results = {}
-    for chat_id in chat_ids:
-        ok = await send_message(bot_token, chat_id, text)
-        results[chat_id] = ok
+    for target in targets:
+        key = repr(target)
+        ok = await send_message(bot_token, target.chat_id, text, target.topic_id)
+        results[key] = ok
     return results
