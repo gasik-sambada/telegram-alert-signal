@@ -104,3 +104,35 @@ curl -s -X POST "$BASE_URL/webhook" \
 echo ""
 
 echo "✅ All tests done!"
+
+# ─── 8. SuperTrend MTF — Current TF Buy Signal ──────────────────────────────────
+echo "━━━ 8. SuperTrend MTF — Current TF Buy ━━━"
+curl -s -X POST "$BASE_URL/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "signal",
+    "symbol": "BTCUSDT.P",
+    "side": "buy",
+    "price": 104325.50,
+    "timeframe": "1H",
+    "htf": "",
+    "indicator": "SuperTrend MTF"
+  }' | python3 -m json.tool
+echo ""
+
+# ─── 9. SuperTrend MTF — HTF Sell Signal ────────────────────────────────────────
+echo "━━━ 9. SuperTrend MTF — HTF Sell ━━━"
+curl -s -X POST "$BASE_URL/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "signal",
+    "symbol": "BTCUSDT.P",
+    "side": "sell",
+    "price": 104100.00,
+    "timeframe": "1H",
+    "htf": "1D",
+    "indicator": "SuperTrend MTF"
+  }' | python3 -m json.tool
+echo ""
+
+echo "✅ All SuperTrend MTF tests done!"

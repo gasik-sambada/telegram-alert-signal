@@ -40,7 +40,8 @@ def format_close_all(data: dict) -> str:
 
     reason_text = {
         "supertrend_reversal": "⚡ SuperTrend Reversal",
-        "smc_opposite": "📊 SMC Opposite Break",
+        "supertrend_htf":      "📈 HTF SuperTrend Signal",
+        "smc_opposite":        "📊 SMC Opposite Break",
     }.get(reason, reason)
 
     ids_str = ", ".join(f"<code>{i}</code>" for i in ids)
@@ -73,14 +74,49 @@ def format_update_sl_tp(data: dict) -> str:
     )
 
 
+def format_signal(data: dict) -> str:
+    """
+    Format a pure signal alert (no order / position) into a Telegram message.
+    Used by SuperTrend MTF and similar indicators that fire directional signals.
+    """
+    symbol    = data.get("symbol", "???")
+    side      = data.get("side", "unknown").upper()   # BUY or SELL
+    timeframe = data.get("timeframe", "")             # e.g. "1H"
+    htf       = data.get("htf", "")                   # e.g. "1D"
+    price     = data.get("price", 0)
+    indicator = data.get("indicator", "SuperTrend MTF")
+    is_htf    = bool(htf)                             # True = higher-TF signal
+
+    is_buy   = side == "BUY"
+    emoji    = "🟢" if is_buy else "🔴"
+    dir_text = "LONG ↑" if is_buy else "SHORT ↓"
+
+    # Header differs for current-TF vs higher-TF signals
+    if is_htf:
+        header = f"📊 {dir_text} [{htf} HTF Signal]"
+    else:
+        header = f"{emoji} {dir_text} [{timeframe} Signal]"
+
+    lines = [
+        f"{header} — <b>{symbol}</b>",
+        f"━━━━━━━━━━━━━━━━━━━━━━",
+        f"📅 TF: <b>{timeframe}</b>" + (f"  |  📊 HTF: <b>{htf}</b>" if is_htf else ""),
+        f"💰 Price: <b>{_fmt_price(price)}</b>",
+        f"📌 Indicator: {indicator}",
+        f"━━━━━━━━━━━━━━━━━━━━━━",
+    ]
+    return "\n".join(lines)
+
+
 def format_alert(data: dict) -> str:
     """Route to the correct formatter based on the action field."""
     action = data.get("action", "")
 
     formatters = {
-        "open": format_open_order,
-        "close_all": format_close_all,
+        "open":         format_open_order,
+        "close_all":    format_close_all,
         "update_sl_tp": format_update_sl_tp,
+        "signal":       format_signal,       # SuperTrend MTF & pure signal alerts
     }
 
     formatter = formatters.get(action)

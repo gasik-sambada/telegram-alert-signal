@@ -23,28 +23,31 @@ async def send_message(
     Returns True on success.
     """
     url = f"{TELEGRAM_API}/bot{bot_token}/sendMessage"
-    payload = {
+    payload: dict = {
         "chat_id": chat_id,
         "text": text,
         "parse_mode": "HTML",
-        "disable_web_page_preview": True,
+        # link_preview_options replaces the deprecated disable_web_page_preview
+        "link_preview_options": {"is_disabled": True},
     }
 
-    # Add topic (forum thread) if specified
+    # Add topic (forum thread) if specified — must be a positive integer
     if topic_id is not None:
-        payload["message_thread_id"] = topic_id
+        payload["message_thread_id"] = int(topic_id)  # explicit cast, never a string
+
+    dest = f"{chat_id}#{topic_id}" if topic_id is not None else chat_id
+    logger.debug(f"Sending to {dest} | payload keys: {list(payload.keys())} | thread_id={payload.get('message_thread_id')}")
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(url, json=payload)
 
         if resp.status_code == 200:
-            dest = f"{chat_id}#{topic_id}" if topic_id else chat_id
-            logger.info(f"Message sent to {dest}")
+            logger.info(f"✅ Message sent to {dest}")
             return True
         else:
             logger.error(
-                f"Telegram API error for chat {chat_id}: "
+                f"Telegram API error for {dest}: "
                 f"{resp.status_code} — {resp.text}"
             )
             return False
