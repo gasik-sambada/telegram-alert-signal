@@ -4,7 +4,7 @@ import os
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,23 @@ class ChatTarget:
 
 
 @dataclass
+class AutoTradeConfig:
+    """Configuration for forwarding signals to the bybit-auto-trade service."""
+
+    # URL of the bybit-auto-trade service (e.g. http://bybit-auto-trade:9000)
+    url: str = ""
+    # Shared secret sent as X-Auto-Trade-Secret header (optional)
+    secret: str = ""
+    # Set of symbols (uppercase) that should trigger auto-trade
+    symbols: Set[str] = field(default_factory=set)
+
+    @property
+    def enabled(self) -> bool:
+        """True when the auto-trade service URL is configured."""
+        return bool(self.url)
+
+
+@dataclass
 class Config:
     """Application configuration loaded from environment variables."""
 
@@ -33,6 +50,8 @@ class Config:
     default_targets: list[ChatTarget] = field(default_factory=list)
     # Optional webhook secret for request validation
     webhook_secret: str = ""
+    # Auto-trade forwarding config
+    auto_trade: AutoTradeConfig = field(default_factory=AutoTradeConfig)
     # Server settings
     host: str = "0.0.0.0"
     port: int = 8000
@@ -99,11 +118,32 @@ class Config:
         port = int(os.getenv("PORT", "8000"))
         log_level = os.getenv("LOG_LEVEL", "INFO")
 
+        # ── Auto-trade config ────────────────────────────────────────────────
+        auto_trade_url = os.getenv("AUTO_TRADE_URL", "")
+        auto_trade_secret = os.getenv("AUTO_TRADE_SECRET", "")
+        auto_trade_symbols_raw = os.getenv("AUTO_TRADE_SYMBOLS", "[]")
+        auto_trade_symbols: Set[str] = set()
+        try:
+            parsed = json.loads(auto_trade_symbols_raw)
+            if isinstance(parsed, list):
+                auto_trade_symbols = {str(s).upper() for s in parsed}
+            else:
+                logger.error("AUTO_TRADE_SYMBOLS must be a JSON array, e.g. [\"BTCUSDT\",\"ETHUSDT\"]")
+        except json.JSONDecodeError:
+            logger.error("Invalid AUTO_TRADE_SYMBOLS JSON, auto-trade disabled")
+
+        auto_trade = AutoTradeConfig(
+            url=auto_trade_url,
+            secret=auto_trade_secret,
+            symbols=auto_trade_symbols,
+        )
+
         return cls(
             bot_token=bot_token,
             symbol_chat_map=symbol_chat_map,
             default_targets=default_targets,
             webhook_secret=webhook_secret,
+            auto_trade=auto_trade,
             host=host,
             port=port,
             log_level=log_level,
@@ -126,3 +166,24 @@ class Config:
 
         logger.warning(f"No chat targets configured for symbol '{symbol}' and no defaults set")
         return []
+
+    def should_auto_trade(self, symbol: str) -> bool:
+        """Return True if this symbol should be forwarded to the auto-trade service.
+
+        Matching is flexible:
+          - Strips exchange prefix:  \"BINANCE:BTCUSDT.P\" → checks \"BTCUSDT.P\"
+          - Matches full symbol:     \"BTCUSDT.P\" in AUTO_TRADE_SYMBOLS
+          - Also matches base:       \"BTCUSDT\" in AUTO_TRADE_SYMBOLS (if user omits .P)
+        """
+        if not self.auto_trade.enabled:
+            return False
+        # Strip exchange prefix
+        clean = symbol.upper()
+        if ":" in clean:
+            clean = clean.split(":", 1)[1]
+        # Check full symbol (with .P) and base symbol (without .P)
+        base = clean[:-2] if clean.endswith(".P") else clean
+        return (
+            clean in self.auto_trade.symbols
+            or base in self.auto_trade.symbols
+        )

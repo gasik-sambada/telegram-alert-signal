@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request, Response, status
 from .config import Config
 from .formatter import format_alert
 from .telegram import send_to_targets
+from .auto_trade import push_auto_trade
 
 # ── Load config ──────────────────────────────────────────────────────────────────
 config = Config.from_env()
@@ -28,6 +29,12 @@ async def lifespan(app: FastAPI):
     logger.info(f"   Symbols configured: {list(config.symbol_chat_map.keys()) or ['(using defaults)']}")
     logger.info(f"   Default targets:    {config.default_targets or ['(none)']}")
     logger.info(f"   Webhook secret:     {'✅ set' if config.webhook_secret else '⚠️  not set'}")
+    if config.auto_trade.enabled:
+        logger.info(f"   Auto-trade URL:     {config.auto_trade.url}")
+        logger.info(f"   Auto-trade symbols: {sorted(config.auto_trade.symbols) or ['(all disabled)']}")
+        logger.info(f"   Auto-trade secret:  {'✅ set' if config.auto_trade.secret else '⚠️  not set'}")
+    else:
+        logger.info("   Auto-trade:         ⚠️  disabled (AUTO_TRADE_URL not set)")
     yield
     logger.info("👋 Alert service stopped")
 
@@ -113,6 +120,11 @@ async def webhook(request: Request):
         failed = sum(1 for ok in results.values() if not ok)
 
         logger.info(f"✅ Sent to {sent}/{len(targets)} targets (failed: {failed})")
+
+        # ── Auto-trade push (fire-and-forget) ────────────────────────────────
+        if config.should_auto_trade(symbol):
+            auto_ok = await push_auto_trade(config.auto_trade, data)
+            logger.info(f"🤖 Auto-trade push: {'✅ ok' if auto_ok else '❌ failed'}")
 
         return {
             "status": "ok",
