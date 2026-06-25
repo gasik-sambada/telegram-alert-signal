@@ -102,7 +102,11 @@ async def push_auto_trade(cfg: "AutoTradeConfig", data: dict) -> bool:
         return True  # Nothing to push — not an error
 
     action = payload["action"]
-    endpoint = "/trade" if action == "open" else "/close"
+    # Route:
+    #   open           → /trade  (place a new order)
+    #   update_sl_tp   → /trade  (update SL/TP on open position)
+    #   close_all      → /close  (cancel orders + close positions)
+    endpoint = "/close" if action == "close_all" else "/trade"
     url = cfg.url.rstrip("/") + endpoint
 
     headers = {"Content-Type": "application/json"}
