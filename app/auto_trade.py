@@ -62,10 +62,17 @@ def _build_trade_payload(data: dict) -> Optional[dict]:
         return payload
 
     if action == "close_all":
-        return {
+        payload = {
             "action": "close_all",
             "symbol": symbol.upper(),
         }
+        # Forward side if present — tells bybit-auto-trade which direction to close.
+        # "buy" = close long positions only, "sell" = close short positions only.
+        # If absent, closes all positions for the symbol.
+        close_side = data.get("side")
+        if close_side:
+            payload["side"] = str(close_side)
+        return payload
 
     if action == "update_sl_tp":
         payload = {
